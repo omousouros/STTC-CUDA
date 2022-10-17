@@ -317,7 +317,7 @@ def STTC_pairs_analysis_gpu(IDs, A, Dt, filename):
     N = A.shape[0]
     F = A.shape[1]
     Shifts = F - 1
-    full_filename = filename.replace('.csv', '_' + str(Dt) + '-dt_pairs.csv')
+    full_filename = filename.replace('.csv', '_all-shifts_' + str(Dt) + '-dt_pairs.csv')
 
     TPB = (tpb, tpb)
 
@@ -1113,9 +1113,17 @@ def STTC_triplets_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
     tiling_percentage[math.ceil(N / tpb_sq), tpb_sq](d_Bm_r[:, 0], F, d_T_Bm)
 
     # some timing prints
-    some = 100 if N > 999 else 10
+    some = 100 if N > 99 else 10
+
+    some_tmp = some
     some_percent = math.ceil(N / some)
-    prev_time = start_time
+    some_sum = some_percent
+
+    curr_time = time.time()
+    some_percent_time = curr_time - start_time
+    prev_time = curr_time
+    (mins, secs) = divmod(some_percent_time, 60.)
+    print("%i/%i - %im%.3fs" % (some - some_tmp, some, mins, secs))
 
     with open(full_filename, 'w') as f:
         f.write('NeuronA,NeuronB,NeuronC,STTC,CtrlGrpMean,CtrlGrpStDev,NullSTTC,Zscore\n')
@@ -1123,12 +1131,17 @@ def STTC_triplets_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
     for a in range(N):
 
         # some timing prints
-        if (a % some_percent) == 0:
+        if a == some_sum:
+            some_tmp -= 1
+            some_percent = math.ceil((N - some_sum) / some_tmp)
+            some_sum += some_percent
+
             curr_time = time.time()
             some_percent_time = curr_time - prev_time
             prev_time = curr_time
             (mins, secs) = divmod(some_percent_time, 60.)
-            print("%i/%i - %im%.3fs" % (a // some_percent, some, mins, secs))
+            print("%i/%i - %im%.3fs" % (some - some_tmp, some, mins, secs))
+
             pass
         
         for c in range(N):
@@ -1136,7 +1149,7 @@ def STTC_triplets_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
                 continue
         
             # create the null array for neuron C
-            h_shift_ary = np.random.randint(1, high=F, size=S)
+            h_shift_ary = np.random.choice(np.arange(1, F), size=S, replace=False)
             h_shift_ary[0] = 0
             d_shift_ary = cuda.to_device(h_shift_ary)
             circular_shift_rng[BPG_SxF, TPB](d_A[c, :], d_shift_ary, d_C)
@@ -1550,8 +1563,10 @@ def main():
             dataset = np.array(list(reader)).astype(np.uint8)
         
         ids = [int(c.replace('V', '')) for c in header]
+        #ids = np.ascontiguousarray(ids[0:100])
 
         dataset = dataset.T
+        #dataset = np.ascontiguousarray(dataset[0:100, :])
 
         '''
         N_neurons = int(sys.argv[5])
@@ -1571,7 +1586,7 @@ def main():
         #data_path = data_path.replace('.csv', '')
         print(data_path)
         
-        res_path = filename.replace(dir, dir + 'results/')
+        res_path = dir + 'results/' + filename
         
         Path(dir + 'results/').mkdir(parents=True, exist_ok=True)
         
@@ -1587,12 +1602,12 @@ def main():
         #STTC pairs analysis in GPU with all shifts for control group
         STTC_pairs_analysis_gpu(ids, dataset, Dt, res_path)
         '''
+        '''
         #STTC pairs analysis in GPU with specific number of shifts for control group
         STTC_pairs_analysis_gpu_rng(ids, dataset, Dt, N_shifts, res_path)
         '''
         #STTC triplets analysis in GPU with specific number of shifts for control group
         STTC_triplets_analysis_gpu_rng(ids, dataset, Dt, N_shifts, res_path)
-        '''
         '''
         STTC_triplets_stats(ids, dataset, Dt, res_path)
         '''
