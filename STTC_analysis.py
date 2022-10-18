@@ -386,9 +386,17 @@ def STTC_pairs_analysis_gpu(IDs, A, Dt, filename):
     #cuda.synchronize()
     
     # some timing prints
-    some = 100 if N > 999 else 10
-    some_percent = int(N / some)
-    prev_time = start_time
+    some = 100 if N > 99 else 10
+
+    some_tmp = some
+    some_percent = math.ceil(N / some)
+    some_sum = some_percent
+
+    curr_time = time.time()
+    some_percent_time = curr_time - start_time
+    prev_time = curr_time
+    (mins, secs) = divmod(some_percent_time, 60.)
+    print("%i/%i - %im%.3fs" % (some - some_tmp, some, mins, secs))
 
     with open(full_filename, 'w') as f:
         f.write('NeuronA,NeuronB,STTC,CtrlGrpMean,CtrlGrpStDev,NullSTTC,Zscore\n')
@@ -398,12 +406,17 @@ def STTC_pairs_analysis_gpu(IDs, A, Dt, filename):
         #cuda.synchronize()
 
         # some timing prints
-        if (n % some_percent) == 0:
+        if n == some_sum:
+            some_tmp -= 1
+            some_percent = math.ceil((N - some_sum) / some_tmp)
+            some_sum += some_percent
+
             curr_time = time.time()
             some_percent_time = curr_time - prev_time
             prev_time = curr_time
             (mins, secs) = divmod(some_percent_time, 60.)
-            print("%i/%i - %im%.3fs" % (n // some_percent, some, mins, secs))
+            print("%i/%i - %im%.3fs" % (some - some_tmp, some, mins, secs))
+
             pass
         
         # create the null array for neuron B
@@ -496,9 +509,6 @@ def STTC_pairs_analysis_gpu(IDs, A, Dt, filename):
     some_percent_time = curr_time - prev_time
     (mins, secs) = divmod(some_percent_time, 60.)
     print("%i/%i - %im%.3fs" % (some, some, mins, secs))
-    total_time = curr_time - start_time
-    (mins, secs) = divmod(total_time, 60.)
-    print("total - %im%.3fs" % (mins, secs))
 
     pass
 
@@ -581,9 +591,17 @@ def STTC_pairs_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
     #cuda.synchronize()
     
     # some timing prints
-    some = 100 if N > 999 else 10
+    some = 100 if N > 99 else 10
+
+    some_tmp = some
     some_percent = math.ceil(N / some)
-    prev_time = start_time
+    some_sum = some_percent
+
+    curr_time = time.time()
+    some_percent_time = curr_time - start_time
+    prev_time = curr_time
+    (mins, secs) = divmod(some_percent_time, 60.)
+    print("%i/%i - %im%.3fs" % (some - some_tmp, some, mins, secs))
 
     with open(full_filename, 'w') as f:
         f.write('NeuronA,NeuronB,STTC,CtrlGrpMean,CtrlGrpStDev,NullSTTC,Zscore\n')
@@ -593,12 +611,17 @@ def STTC_pairs_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
         #cuda.synchronize()
 
         # some timing prints
-        if (n % some_percent) == 0:
+        if n == some_sum:
+            some_tmp -= 1
+            some_percent = math.ceil((N - some_sum) / some_tmp)
+            some_sum += some_percent
+
             curr_time = time.time()
             some_percent_time = curr_time - prev_time
             prev_time = curr_time
             (mins, secs) = divmod(some_percent_time, 60.)
-            print("%i/%i - %im%.3fs" % (n // some_percent, some, mins, secs))
+            print("%i/%i - %im%.3fs" % (some - some_tmp, some, mins, secs))
+
             pass
         
         # create the null array for neuron B
@@ -691,9 +714,6 @@ def STTC_pairs_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
     some_percent_time = curr_time - prev_time
     (mins, secs) = divmod(some_percent_time, 60.)
     print("%i/%i - %im%.3fs" % (some, some, mins, secs))
-    total_time = curr_time - start_time
-    (mins, secs) = divmod(total_time, 60.)
-    print("total - %im%.3fs" % (mins, secs))
 
     pass
 
@@ -1252,7 +1272,6 @@ def STTC_triplets_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
     # some timing prints
     curr_time = time.time()
     some_percent_time = curr_time - prev_time
-    prev_time = curr_time
     (mins, secs) = divmod(some_percent_time, 60.)
     print("%i/%i - %im%.3fs" % (some, some, mins, secs))
     
