@@ -31,15 +31,6 @@ def binaryAND(arr, res):
 
 
 @cuda.jit
-def binaryANDnot(arr, res):
-    x, y = cuda.grid(2)
-
-    if x < res.shape[0] and y < res.shape[1]:
-        res[x, y] &= ~arr[y]
-
-
-
-@cuda.jit
 def copy_array(arr, res):
     x, y = cuda.grid(2)
 
@@ -1292,60 +1283,15 @@ def STTC_triplets_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
 def STTC_scc_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
     start_time = time.time()
 
-    thres = .8
-
     N = A.shape[0]
-    F = A.shape[1]
     S = 1 + Shifts
     full_filename = filename.replace('.csv', '_' + str(Shifts) + '-shifts_' + str(Dt) + '-dt_scc.csv')
 
     TPB = (tpb, tpb)
 
-    BPG_N = math.ceil(N / tpb)
-    BPG_F = math.ceil(F / tpb)
-    BPG_S = math.ceil(S / tpb)
-    BPG_Sm = math.ceil(Shifts / tpb)
-    BPG_NxF = (BPG_N, BPG_F)
-    BPG_Nx1 = (BPG_N, 1)
-    BPG_SxF = (BPG_S, BPG_F)
-    BPG_Sx1 = (BPG_S, 1)
-    BPG_SxN = (BPG_S, BPG_N)
-    BPG_NxS = (BPG_N, BPG_S)
-    BPG_NxSm = (BPG_N, BPG_Sm)
+    with open(full_filename, 'w') as f:
+        f.write('NeuronA,NeuronB,NeuronR,STTC,CtrlGrpMean,CtrlGrpStDev,NullSTTC,Zscore\n')
 
-    d_R = cuda.to_device(A)
-
-    d_A = cuda.device_array((N, F), dtype=np.uint8)
-    d_A_r = cuda.device_array((N, F), dtype=np.uint64)
-
-    d_Ap = cuda.device_array((N, F), dtype=np.uint8)
-    d_Ap_r = cuda.device_array((N, F), dtype=np.uint64)
-    d_T_Ap = cuda.device_array(N, dtype=np.float64)
-
-    d_B = cuda.device_array((S, F), dtype=np.uint8)
-    d_B_r = cuda.device_array((S, F), dtype=np.uint64)
-    d_B_rr = cuda.device_array(Shifts, dtype=np.uint64)
-
-    d_Bm = cuda.device_array((S, F), dtype=np.uint8)
-    d_Bm_r = cuda.device_array((S, F), dtype=np.uint64)
-    d_T_Bm = cuda.device_array(S, dtype=np.float64)
-
-    d_N_B_Ap = cuda.device_array((S, N), dtype=np.uint64)
-    d_N_A_Bm = cuda.device_array((N, S), dtype=np.uint64)
-
-    d_P_B_Ap = cuda.device_array((S, N), dtype=np.float64)
-    d_P_A_Bm = cuda.device_array((N, S), dtype=np.float64)
-
-    d_STTC_AB = cuda.device_array((N, S), dtype=np.float64)
-
-    d_CG_r = cuda.device_array((N, Shifts), dtype=np.float64)
-    d_CGd = cuda.device_array((N, Shifts), dtype=np.float64)
-    d_CGd_r = cuda.device_array((N, Shifts), dtype=np.float64)
-
-    d_CGmean = cuda.device_array(N, dtype=np.float64)
-    d_CGstdev = cuda.device_array(N, dtype=np.float64)
-    d_CGzscore = cuda.device_array(N, dtype=np.float64)
-        
     # some timing prints
     some = 100 if N > 99 else 10
 
@@ -1359,11 +1305,7 @@ def STTC_scc_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
     (mins, secs) = divmod(some_percent_time, 60.)
     print("%i/%i - %im%.3fs" % (some - some_tmp, some, mins, secs))
 
-    with open(full_filename, 'w') as f:
-        f.write('NeuronA,NeuronB,NeuronR,STTC,CtrlGrpMean,CtrlGrpStDev,NullSTTC,Zscore\n')
-
     for r in range(N):
-
         # some timing prints
         if r == some_sum:
             some_tmp -= 1
@@ -1378,9 +1320,52 @@ def STTC_scc_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
 
             pass
 
-        copy_array[BPG_NxF, TPB](d_R, d_A)
+        # remove frames where neuron R has spikes
+        R = A[:, np.array(A[r, :] == 0)]
 
-        binaryANDnot[BPG_SxF, TPB](d_R[r, :], d_A)
+        F = R.shape[1]
+
+        BPG_N = math.ceil(N / tpb)
+        BPG_F = math.ceil(F / tpb)
+        BPG_S = math.ceil(S / tpb)
+        BPG_Sm = math.ceil(Shifts / tpb)
+        BPG_NxF = (BPG_N, BPG_F)
+        BPG_Nx1 = (BPG_N, 1)
+        BPG_SxF = (BPG_S, BPG_F)
+        BPG_Sx1 = (BPG_S, 1)
+        BPG_SxN = (BPG_S, BPG_N)
+        BPG_NxS = (BPG_N, BPG_S)
+        BPG_NxSm = (BPG_N, BPG_Sm)
+
+        d_A = cuda.to_device(R)
+        d_A_r = cuda.device_array((N, F), dtype=np.uint64)
+
+        d_Ap = cuda.device_array((N, F), dtype=np.uint8)
+        d_Ap_r = cuda.device_array((N, F), dtype=np.uint64)
+        d_T_Ap = cuda.device_array(N, dtype=np.float64)
+
+        d_B = cuda.device_array((S, F), dtype=np.uint8)
+        d_B_r = cuda.device_array((S, F), dtype=np.uint64)
+
+        d_Bm = cuda.device_array((S, F), dtype=np.uint8)
+        d_Bm_r = cuda.device_array((S, F), dtype=np.uint64)
+        d_T_Bm = cuda.device_array(S, dtype=np.float64)
+
+        d_N_B_Ap = cuda.device_array((S, N), dtype=np.uint64)
+        d_N_A_Bm = cuda.device_array((N, S), dtype=np.uint64)
+
+        d_P_B_Ap = cuda.device_array((S, N), dtype=np.float64)
+        d_P_A_Bm = cuda.device_array((N, S), dtype=np.float64)
+
+        d_STTC_AB = cuda.device_array((N, S), dtype=np.float64)
+
+        d_CG_r = cuda.device_array((N, Shifts), dtype=np.float64)
+        d_CGd = cuda.device_array((N, Shifts), dtype=np.float64)
+        d_CGd_r = cuda.device_array((N, Shifts), dtype=np.float64)
+
+        d_CGmean = cuda.device_array(N, dtype=np.float64)
+        d_CGstdev = cuda.device_array(N, dtype=np.float64)
+        d_CGzscore = cuda.device_array(N, dtype=np.float64)
 
         # find space occupied by spikes of neuron A in timeseries
         sum_reduce_2d[BPG_NxF, TPB](d_A, d_A_r)
@@ -1398,40 +1383,23 @@ def STTC_scc_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
         sum_reduce_2d[BPG_NxF, TPB](d_Ap, d_Ap_r)
         sum_reduce_2d[BPG_Nx1, TPB](d_Ap_r, d_Ap_r)
         tiling_percentage[math.ceil(N / tpb_sq), tpb_sq](d_Ap_r[:, 0], F, d_T_Ap)
-        
+
         # for each neuron in dataset
         for n in range(N):
-            if r == n:
-                continue
-            
             # create the null array for neuron B
             h_shift_ary = np.random.randint(1, high=F, size=S)
             h_shift_ary[0] = 0
             d_shift_ary = cuda.to_device(h_shift_ary)
             circular_shift_rng[BPG_SxF, TPB](d_A[n, :], d_shift_ary, d_B)
-            
+
             # find space occupied by spikes of neuron B in timeseries
             sum_reduce_2d[BPG_SxF, TPB](d_B, d_B_r)
             sum_reduce_2d[BPG_Sx1, TPB](d_B_r, d_B_r)
 
-            #h_B_r = d_B_r[:, 0].copy_to_host()
-
-            if d_B_r[0, 0] == 0:#h_B_r[0] == 0:
-                continue
-
-            binary_filter_nonzero_1d[math.ceil(Shifts / tpb_sq), tpb_sq](d_B_r[1:, 0], d_B_rr)
-            sum_reduce_1d[math.ceil(Shifts / tpb_sq), tpb_sq](d_B_rr, d_B_rr)
-            sum_reduce_1d[1, tpb_sq](d_B_rr, d_B_rr)
-
-            #h_B_rr = d_B_rr[:].copy_to_host()
-
-            if d_B_rr[0] < int(thres*Shifts):#h_B_rr[0] < int(thres*Shifts):
-                continue
-
             # find correlation between timeseries of neuron B and tiles of neuron A
             correlation[BPG_SxN, TPB](d_B, d_Ap, d_N_B_Ap)
             correlation_percentage_x[BPG_SxN, TPB](d_N_B_Ap, d_B_r[:, 0], d_P_B_Ap)
-            
+
             # create tiles for neuron B
             copy_array[BPG_SxF, TPB](d_B, d_Bm)
             for t in range(1, Dt+1):
@@ -1439,7 +1407,7 @@ def STTC_scc_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
                 BPG_Fm = math.ceil((F - t) / tpb)
                 BPG_SxFm = (BPG_S, BPG_Fm)
                 binaryOR[BPG_SxFm, TPB](d_B[:, t:], d_Bm[:, :-t])
-            
+
             # find space occupied by tiles of neuron B in timeseries
             sum_reduce_2d[BPG_SxF, TPB](d_Bm, d_Bm_r)
             sum_reduce_2d[BPG_Sx1, TPB](d_Bm_r, d_Bm_r)
@@ -1456,19 +1424,17 @@ def STTC_scc_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
             h_STTC_Null = d_STTC_AB[:, 1].copy_to_host()
 
             # calculate CtrlGrpMean
-            filter_nonzero_2d[BPG_NxSm, TPB](d_STTC_AB[:, 1:], d_B_r[:, 0], d_STTC_AB[:, 1:])
             sum_reduce_2d_f8[BPG_NxSm, TPB](d_STTC_AB[:, 1:], d_CG_r)
             sum_reduce_2d_f8[BPG_Nx1, TPB](d_CG_r, d_CG_r)
-            tiling_percentage[math.ceil(N / tpb_sq), tpb_sq](d_CG_r[:, 0], d_B_rr[0], d_CGmean)
+            tiling_percentage[math.ceil(N / tpb_sq), tpb_sq](d_CG_r[:, 0], Shifts, d_CGmean)
 
             h_CGmean = d_CGmean.copy_to_host()
 
             # calculate CtrlGrpStDev
             deviation[BPG_NxSm, TPB](d_STTC_AB[:, 1:], d_CGmean, d_CGd)
-            filter_nonzero_2d[BPG_NxSm, TPB](d_CGd, d_B_r[:, 0], d_CGd)
             sum_reduce_2d_f8[BPG_NxSm, TPB](d_CGd, d_CGd_r)
             sum_reduce_2d_f8[BPG_Nx1, TPB](d_CGd_r, d_CGd_r)
-            sqrt_mean[math.ceil(N / tpb_sq), tpb_sq](d_CGd_r[:, 0], d_B_rr[0], d_CGstdev)
+            sqrt_mean[math.ceil(N / tpb_sq), tpb_sq](d_CGd_r[:, 0], Shifts, d_CGstdev)
 
             h_CGstdev = d_CGstdev.copy_to_host()
 
@@ -1484,7 +1450,7 @@ def STTC_scc_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
 
             h_arr = np.column_stack((h_nA, h_nB, h_nR, h_STTC_AB, h_CGmean, h_CGstdev, h_STTC_Null, h_CGzscore))
 
-            h_arr = np.delete(h_arr, [n, r], 0)
+            h_arr = np.delete(h_arr, n, 0)
 
             with open(full_filename, 'a') as f:
                 np.savetxt(f, h_arr, fmt='%d,%d,%d,%.10f,%.10f,%.10f,%.10f,%.10f')
