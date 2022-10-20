@@ -1386,6 +1386,9 @@ def STTC_scc_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
 
         # for each neuron in dataset
         for n in range(N):
+            if r == n:
+                continue
+
             # create the null array for neuron B
             h_shift_ary = np.random.randint(1, high=F, size=S)
             h_shift_ary[0] = 0
@@ -1450,7 +1453,7 @@ def STTC_scc_analysis_gpu_rng(IDs, A, Dt, Shifts, filename):
 
             h_arr = np.column_stack((h_nA, h_nB, h_nR, h_STTC_AB, h_CGmean, h_CGstdev, h_STTC_Null, h_CGzscore))
 
-            h_arr = np.delete(h_arr, n, 0)
+            h_arr = np.delete(h_arr, [n, r], 0)
 
             with open(full_filename, 'a') as f:
                 np.savetxt(f, h_arr, fmt='%d,%d,%d,%.10f,%.10f,%.10f,%.10f,%.10f')
